@@ -1,0 +1,50 @@
+﻿using Unity.Burst;
+using Unity.Entities;
+using Unity.Transforms;
+using Unity.Mathematics;
+
+// 处理敌人生命与死亡
+[UpdateInGroup(typeof(SimulationSystemGroup))]
+[BurstCompile]
+public partial struct EnemyHealthSystem : ISystem
+{
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        state.RequireForUpdate<EnemyTag>();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var ecbSingleton = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>();
+        var ecb = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged);
+
+        // 对所有生命<=0的敌人进行处理
+        foreach (var (enemyStats, spawnedBy, entity) in
+                 SystemAPI.Query<RefRO<EnemyStats>, RefRO<SpawnedBy>>().WithEntityAccess())
+        {
+            if (enemyStats.ValueRO.Health <= 0)
+            {
+                // 在删除敌人前，减少生成器的 CurrentEnemies
+                if (spawnedBy.ValueRO.Spawner != Entity.Null)
+                {
+                    var spawnerEntity = spawnedBy.ValueRO.Spawner;
+
+                    if (state.EntityManager.Exists(spawnerEntity))
+                    {
+                        if (SystemAPI.HasComponent<EnemySpawner>(spawnerEntity))
+                        {
+                            var spawner = SystemAPI.GetComponent<EnemySpawner>(spawnerEntity);
+                            spawner.CurrentEnemies = math.max(0, spawner.CurrentEnemies - 1);
+                            ecb.SetComponent(spawnerEntity, spawner);
+                        }
+                    }
+                }
+
+                // 最终销毁敌人实体
+                ecb.DestroyEntity(entity);
+            }
+        }
+    }
+}

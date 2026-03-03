@@ -1,0 +1,29 @@
+﻿using Unity.Entities;
+using Unity.Mathematics;
+
+// 玩家标记组件
+public struct PlayerTag : IComponentData { }
+
+// 玩家移动组件
+public struct PlayerMovement : IComponentData
+{
+    public float MoveSpeed;
+    public float2 InputDirection;
+}
+
+// 玩家统计数据
+public struct PlayerStats : IComponentData
+{
+    public int Health;
+    public int MaxHealth;
+}
+
+// 玩家攻击配置（包含子弹 prefab 引用及运行时计时器）
+public struct PlayerAttackConfig : IComponentData
+{
+    public Entity BulletPrefab;    // 子弹 prefab 实体
+    public float AttackInterval;   // 攻击间隔
+    public float AttackTimer;      // 计时器（运行时）
+    public float BulletSpeed;
+    public int Damage;
+}

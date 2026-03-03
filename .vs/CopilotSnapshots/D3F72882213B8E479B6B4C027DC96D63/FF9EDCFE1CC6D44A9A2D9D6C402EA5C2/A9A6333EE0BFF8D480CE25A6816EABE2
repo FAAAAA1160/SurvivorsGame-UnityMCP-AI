@@ -1,0 +1,90 @@
+﻿using Unity.Burst;
+using Unity.Entities;
+using Unity.Transforms;
+using Unity.Mathematics;
+
+// 简单的自动攻击系统：按攻击间隔生成子弹并优先瞄准最近敌人
+[UpdateInGroup(typeof(SimulationSystemGroup))]
+[BurstCompile]
+public partial struct PlayerAttackSystem : ISystem
+{
+    private const float ATTACK_INTERVAL = 0.5f; // 示例：每0.5秒攻击一次
+    private const float BULLET_SPEED = 20f;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        state.RequireForUpdate<PlayerTag>();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        float deltaTime = SystemAPI.Time.DeltaTime;
+
+        // 获取玩家实体与位置
+        Entity playerEntity = SystemAPI.GetSingletonEntity<PlayerTag>();
+        if (playerEntity == Entity.Null) return;
+
+        var playerTransform = SystemAPI.GetComponent<LocalTransform>(playerEntity);
+        float3 playerPos = playerTransform.Position;
+
+        // 单例计时器存在于玩家组件中并不是，目前用component来临时记录攻击间隔
+        // 这里我们使用一个局部静态计时器更简单——但在 ECS 中应使用组件或单例实体来保存状态。
+
+        // 创建ECB
+        var ecbSingleton = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>();
+        var ecb = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged);
+
+        // 选出最近的敌人（简单线性搜索）
+        Entity nearestEnemy = Entity.Null;
+        float nearestDistSq = float.MaxValue;
+
+        foreach (var (enemyTransform, enemyEntity) in SystemAPI.Query<RefRO<LocalTransform>>().WithAll<EnemyTag>().WithEntityAccess())
+        {
+            float d = math.distancesq(enemyTransform.ValueRO.Position, playerPos);
+            if (d < nearestDistSq)
+            {
+                nearestDistSq = d;
+                nearestEnemy = enemyEntity;
+            }
+        }
+
+        if (nearestEnemy == Entity.Null) return; // 没有敌人
+
+        // 创建子弹实体：假设在场景中通过Authoring已将子弹Prefab转为Entity并挂到Player上，
+        // 这里简单使用一个动态创建的实体作为示例
+
+        Entity bullet = ecb.CreateEntity();
+
+        // 子弹组件：位置与速度
+        ecb.AddComponent(bullet, LocalTransform.FromPosition(playerPos));
+
+        float3 targetPos = SystemAPI.GetComponent<LocalTransform>(nearestEnemy).Position;
+        float3 dir = math.normalizesafe(targetPos - playerPos);
+
+        // 我们添加一个简单的Velocity组件，项目中没有定义具体组件，使用Translation与自定义Velocity
+        ecb.AddComponent(bullet, new Bullet
+        {
+            Direction = dir,
+            Speed = BULLET_SPEED,
+            LifeTime = 5f
+        });
+
+        // 标记子弹是由玩家发出的（如需检测伤害源）
+        ecb.AddComponent(bullet, new BulletOwner { Owner = playerEntity });
+    }
+}
+
+// 子弹组件
+public struct Bullet : IComponentData
+{
+    public float3 Direction;
+    public float Speed;
+    public float LifeTime;
+}
+
+public struct BulletOwner : IComponentData
+{
+    public Entity Owner;
+}
