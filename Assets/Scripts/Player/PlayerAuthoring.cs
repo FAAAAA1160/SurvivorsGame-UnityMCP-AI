@@ -1,0 +1,28 @@
+using Unity.Entities;
+using Unity.Mathematics;
+using UnityEngine;
+
+public class PlayerAuthoring : MonoBehaviour
+{
+    public float MoveSpeed = 5f;
+
+    class Baker : Baker<PlayerAuthoring>
+    {
+        public override void Bake(PlayerAuthoring authoring)
+        {
+            var entity = GetEntity(TransformUsageFlags.Dynamic);
+
+            AddComponent<PlayerTag>(entity);
+            AddComponent(entity, new PlayerMovement
+            {
+                MoveSpeed = authoring.MoveSpeed,
+                InputDirection = float2.zero
+            });
+            AddComponent(entity, new PlayerStats
+            {
+                Health = 100,
+                MaxHealth = 100
+            });
+        }
+    }
+}

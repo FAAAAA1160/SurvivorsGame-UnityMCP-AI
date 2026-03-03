@@ -1,0 +1,56 @@
+﻿using Unity.Burst;
+using Unity.Entities;
+using Unity.Transforms;
+
+// 处理敌人生命与死亡
+[UpdateInGroup(typeof(SimulationSystemGroup))]
+[BurstCompile]
+public partial struct EnemyHealthSystem : ISystem
+{
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        state.RequireForUpdate<EnemyTag>();
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        var ecbSingleton = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>();
+        var ecb = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged);
+
+        // 对所有生命<=0的敌人进行处理
+        foreach (var (enemyStats, spawnedBy, entity) in
+                 SystemAPI.Query<RefRO<EnemyStats>, RefRO<SpawnedBy>>().WithEntityAccess())
+        {
+            if (enemyStats.ValueRO.Health <= 0)
+            {
+                // 在删除敌人前，减少生成器的 CurrentEnemies
+                if (spawnedBy.ValueRO.Spawner != Entity.Null)
+                {
+                    var spawnerEntity = spawnedBy.ValueRO.Spawner;
+
+                    if (EntityManager.Exists(spawnerEntity))
+                    {
+                        // 因为这是ISystem不能直接用EntityManager; 使用EntityCommandBuffer修改
+                        ecb.RemoveComponent<EnemyTag>(entity);
+                        // 读取并写回生成器组件通过 ECB：先读取当前值
+                        // 这里采用直接修改组件数据的方式
+                        // 注意：如果生成器已被销毁，跳过
+                        
+                        // 这里使用DynamicBuffer或直接GetComponent未在 ISystem 环境中安全访问，使用 TryGetComponent via SystemAPI
+                        if (SystemAPI.HasComponent<EnemySpawner>(spawnerEntity))
+                        {
+                            var spawner = SystemAPI.GetComponent<EnemySpawner>(spawnerEntity);
+                            spawner.CurrentEnemies = math.max(0, spawner.CurrentEnemies - 1);
+                            ecb.SetComponent(spawnerEntity, spawner);
+                        }
+                    }
+                }
+
+                // 最终销毁敌人实体
+                ecb.DestroyEntity(entity);
+            }
+        }
+    }
+}

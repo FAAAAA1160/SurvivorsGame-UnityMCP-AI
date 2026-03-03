@@ -1,0 +1,61 @@
+﻿using Unity.Burst;
+using Unity.Entities;
+using Unity.Transforms;
+using Unity.Mathematics;
+
+[UpdateInGroup(typeof(SimulationSystemGroup))]
+[BurstCompile]
+public partial struct BulletSystem : ISystem
+{
+    [BurstCompile]
+    public void OnCreate(ref SystemState state) { }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        float deltaTime = SystemAPI.Time.DeltaTime;
+
+        var ecbSingleton = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>();
+        var ecb = ecbSingleton.CreateCommandBuffer(state.WorldUnmanaged);
+
+        // 移动子弹并减少寿命
+        foreach (var (bulletRef, transformRef, entity) in SystemAPI.Query<RefRW<Bullet>, RefRW<LocalTransform>>().WithEntityAccess())
+        {
+            bulletRef.ValueRW.LifeTime -= deltaTime;
+            if (bulletRef.ValueRO.LifeTime <= 0f)
+            {
+                ecb.DestroyEntity(entity);
+                continue;
+            }
+
+            transformRef.ValueRW.Position += bulletRef.ValueRO.Direction * bulletRef.ValueRO.Speed * deltaTime;
+        }
+
+        // 简单碰撞检测：子弹与敌人距离小于阈值则造成伤害并销毁子弹
+        const float HIT_RADIUS_SQ = 0.5f * 0.5f;
+
+        // 遍历所有子弹
+        foreach (var (bulletTransform, bulletEntity) in SystemAPI.Query<RefRO<LocalTransform>>().WithAll<Bullet>().WithEntityAccess())
+        {
+            // 遍历所有敌人并检测距离
+            foreach (var (enemyTransform, enemyEntity) in SystemAPI.Query<RefRW<LocalTransform>>().WithAll<EnemyTag>().WithEntityAccess())
+            {
+                float d = math.distancesq(bulletTransform.ValueRO.Position, enemyTransform.ValueRO.Position);
+                if (d <= HIT_RADIUS_SQ)
+                {
+                    // 减血
+                    if (SystemAPI.HasComponent<EnemyStats>(enemyEntity))
+                    {
+                        var stats = SystemAPI.GetComponent<EnemyStats>(enemyEntity);
+                        stats.Health -= 10; // 固定伤害，后续可用子弹属性替代
+                        ecb.SetComponent(enemyEntity, stats);
+                    }
+
+                    // 销毁子弹
+                    ecb.DestroyEntity(bulletEntity);
+                    break; // 处理下一个子弹
+                }
+            }
+        }
+    }
+}

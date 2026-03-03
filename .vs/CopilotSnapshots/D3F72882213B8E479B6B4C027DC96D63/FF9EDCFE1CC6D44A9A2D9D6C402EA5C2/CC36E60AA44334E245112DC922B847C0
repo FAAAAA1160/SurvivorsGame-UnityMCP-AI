@@ -1,0 +1,22 @@
+﻿using Unity.Entities;
+using UnityEngine;
+
+public class GameBootstrap : MonoBehaviour
+{
+    private void Start()
+    {
+        // 确保默认World存在
+        var world = World.DefaultGameObjectInjectionWorld;
+
+        // 创建系统
+        world.CreateSystem<GameBootstrapSystem>();
+        world.CreateSystem<PlayerMovementSystem>();
+        world.CreateSystem<EnemySpawnSystem>();
+        world.CreateSystem<EnemyMovementSystem>();
+
+        // 新增：注册玩家攻击、子弹与敌人死亡处理系统
+        world.CreateSystem<PlayerAttackSystem>();
+        world.CreateSystem<BulletSystem>();
+        world.CreateSystem<EnemyDeathSystem>();
+    }
+}

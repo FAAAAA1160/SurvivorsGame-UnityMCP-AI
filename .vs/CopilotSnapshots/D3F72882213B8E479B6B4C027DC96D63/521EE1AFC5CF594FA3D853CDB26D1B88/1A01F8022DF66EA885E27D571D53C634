@@ -1,0 +1,53 @@
+﻿using Unity.Entities;
+using Unity.Mathematics;
+using UnityEngine;
+
+public class PlayerAuthoring : MonoBehaviour
+{
+    public float MoveSpeed = 5f;
+
+    [Header("Attack")]
+    public GameObject BulletPrefab; // 需在 Inspector 指向 BulletPrefab
+    public float AttackInterval = 0.5f;
+    public float BulletSpeed = 20f;
+    public int Damage = 10;
+
+    class Baker : Baker<PlayerAuthoring>
+    {
+        public override void Bake(PlayerAuthoring authoring)
+        {
+            var entity = GetEntity(TransformUsageFlags.Dynamic);
+
+            AddComponent<PlayerTag>(entity);
+            AddComponent(entity, new PlayerMovement
+            {
+                MoveSpeed = authoring.MoveSpeed,
+                InputDirection = float2.zero
+            });
+            AddComponent(entity, new PlayerStats
+            {
+                Health = 100,
+                MaxHealth = 100
+            });
+
+            // 如果没有设置 prefab，警告并跳过设置攻击配置
+            if (authoring.BulletPrefab == null)
+            {
+                Debug.LogWarning("BulletPrefab not assigned on PlayerAuthoring.");
+            }
+            else
+            {
+                var bulletEntity = GetEntity(authoring.BulletPrefab, TransformUsageFlags.None);
+
+                AddComponent(entity, new PlayerAttackConfig
+                {
+                    BulletPrefab = bulletEntity,
+                    AttackInterval = authoring.AttackInterval,
+                    AttackTimer = 0f,
+                    BulletSpeed = authoring.BulletSpeed,
+                    Damage = authoring.Damage
+                });
+            }
+        }
+    }
+}

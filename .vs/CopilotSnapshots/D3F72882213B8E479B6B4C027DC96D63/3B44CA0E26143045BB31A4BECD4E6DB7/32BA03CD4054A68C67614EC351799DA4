@@ -1,0 +1,36 @@
+﻿using Unity.Entities;
+using Unity.Transforms;
+using Unity.Mathematics;
+
+// 处理敌人生命与死亡
+[UpdateInGroup(typeof(SimulationSystemGroup))]
+public class EnemyHealthSystem : SystemBase
+{
+    protected override void OnCreate()
+    {
+        RequireForUpdate<EnemyTag>();
+    }
+
+    protected override void OnUpdate()
+    {
+        var ecb = new EntityCommandBuffer(Unity.Collections.Allocator.Temp);
+
+        Entities.WithAll<EnemyTag>().ForEach((Entity entity, ref EnemyStats stats, in SpawnedBy spawnedBy) =>
+        {
+            if (stats.Health <= 0)
+            {
+                if (spawnedBy.Spawner != Entity.Null && EntityManager.Exists(spawnedBy.Spawner))
+                {
+                    var spawner = EntityManager.GetComponentData<EnemySpawner>(spawnedBy.Spawner);
+                    spawner.CurrentEnemies = math.max(0, spawner.CurrentEnemies - 1);
+                    ecb.SetComponent(spawnedBy.Spawner, spawner);
+                }
+
+                ecb.DestroyEntity(entity);
+            }
+        }).WithoutBurst().Run();
+
+        ecb.Playback(EntityManager);
+        ecb.Dispose();
+    }
+}
